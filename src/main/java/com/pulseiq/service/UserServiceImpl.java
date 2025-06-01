@@ -1,24 +1,38 @@
 package com.pulseiq.service;
 
 
-import com.pulseiq.dto.*;
-import com.pulseiq.entity.*;
+import java.math.BigDecimal;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.util.Date;
+import java.util.Map;
+import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthException;
+import com.google.firebase.auth.FirebaseToken;
+import com.pulseiq.dto.DoctorRegistrationDto;
+import com.pulseiq.dto.LoginRequest;
+import com.pulseiq.dto.PatientRegistrationDto;
+import com.pulseiq.dto.RegisterRequest;
+import com.pulseiq.dto.TechnicianRegistrationDto;
+import com.pulseiq.entity.Doctor;
+import com.pulseiq.entity.Patient;
+import com.pulseiq.entity.Technician;
+import com.pulseiq.entity.User;
+import com.pulseiq.entity.UserRole;
+import com.pulseiq.entity.UserStatus;
 import com.pulseiq.repository.DoctorRepository;
 import com.pulseiq.repository.PatientRepository;
 import com.pulseiq.repository.TechnicianRepository;
 import com.pulseiq.repository.UserRepository;
 import com.pulseiq.security.JwtUtil;
 import com.pulseiq.security.UserDetailsServiceImpl;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-
-import java.math.BigDecimal;
-import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
-import java.util.*;
 //
 //import com.google.firebase.auth.FirebaseAuth;
 //import com.google.firebase.auth.UserRecord;
@@ -144,7 +158,7 @@ public class UserServiceImpl implements UserService {
     private User findUserByIdentifier(String identifier) {
         Optional<User> optionalUser = Optional.empty();
 
-        if (identifier.matches("^(?i)[pdt]\\d+$")) {
+        if (identifier.matches("^(?i)[apdt]\\d+$")) {
             optionalUser = repo.findByUserIdIgnoreCase(identifier);
         } else if (identifier.matches("^\\d{11}$") || identifier.matches("^\\+8801\\d{9}$")) {
             if (identifier.startsWith("01")) {
@@ -187,6 +201,77 @@ public class UserServiceImpl implements UserService {
                 "token", token,
                 "userId", user.getUserId(),
                 "role", user.getRole().name()
+        );
+    }
+    public Map<String, String> loginWithGoogleAsPatient(String idToken) {
+        // 1) Verify ID token with Firebase Admin SDK
+        FirebaseToken decoded = null;
+        try {
+            decoded = FirebaseAuth.getInstance().verifyIdToken(idToken);
+        } catch (FirebaseAuthException e) {
+            
+            e.printStackTrace();
+        }
+        String email     = decoded.getEmail();   // guaranteed non-null for Google sign-in
+        String fullName  = decoded.getName();
+        String firebaseUid = decoded.getUid();
+        System.out.println(email +" "+ fullName+" "+ firebaseUid);
+        if (email == null) {
+            throw new IllegalArgumentException("Google account has no email.");
+        }
+
+        // 2) Check if a local User with this email already exists
+        Optional<User> optUser = repo.findByEmailIgnoreCase(email.trim().toLowerCase());
+        User user;
+        if (optUser.isPresent()) {
+            user = optUser.get();
+            // 2a) If it exists but is not a PATIENT, reject
+            if (user.getRole() != UserRole.PATIENT) {
+                throw new IllegalArgumentException("Google sign-in is only allowed for patients.");
+            }
+            // 2b) It is already a patient—update name (optional)
+            user.setUsername(fullName.split(" ")[0]);
+            user.setEmail(email.trim().toLowerCase());
+            repo.save(user);
+        } else {
+            // 3) No local user with that email → create a new PATIENT user
+            //    Build a fake RegisterRequest just to reuse createAndSaveUser(...) logic:
+            RegisterRequest fake = new RegisterRequest();
+            fake.setEmail(email.trim().toLowerCase());
+            fake.setPhone(null);
+            fake.setPassword("N/A"); // we won’t use the password field for Google users
+            // createAndSaveUser(...) will generate a userId, set role=PATIENT, status=ACTIVE
+            String userId = createAndSaveUser(fake, UserRole.PATIENT, UserStatus.ACTIVE, "P");
+            // Now create a minimal patient profile. You can fill in firstName/lastName if desired:
+            PatientRegistrationDto pr = new PatientRegistrationDto();
+            // Optionally parse fullName into first/last. For now, set fullName as firstName:
+            pr.setFirstName(fullName.split(" ")[0]);
+            pr.setLastName(fullName.split(" ")[1] != null?fullName.split(" ")[1]:" ");
+            pr.setAge(0);          // default or ignore
+            pr.setGender(null);    // default or ignore
+            pr.setBloodGroup(null);// default or ignore
+            createPatientProfile(userId, pr);
+
+            // Reload the newly created User
+            user = repo.findByUserIdIgnoreCase(userId)
+                       .orElseThrow(() -> new IllegalStateException("Just created patient not found."));
+        }
+
+        // 4) At this point, 'user' is guaranteed to be a PATIENT with status=ACTIVE.
+        //    Now generate the same JWT you do in login(...):
+        UserDetails userDetails = org.springframework.security.core.userdetails.User
+            .withUsername(user.getUserId())
+            .password(user.getPassword()) // password may be “N/A” for Google users
+            .authorities("ROLE_" + user.getRole().name())
+            .build();
+
+        String token = jwtUtil.generateToken(userDetails);
+
+        // 5) Return exactly the same shape as login(...) does
+        return Map.of(
+            "token", token,
+            "userId", user.getUserId(),
+            "role",   user.getRole().name()
         );
     }
 

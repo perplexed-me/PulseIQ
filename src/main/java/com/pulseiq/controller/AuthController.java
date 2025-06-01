@@ -1,5 +1,6 @@
 package com.pulseiq.controller;
 
+import com.google.firebase.auth.FirebaseAuthException;
 import com.pulseiq.dto.*;
 import com.pulseiq.service.UserService;
 import jakarta.validation.Valid;
@@ -40,7 +41,27 @@ public class AuthController {
         userService.registerTechnician(dto);
         return ResponseEntity.ok("Technician registered successfully");
     }
+    
 
+    @PostMapping("/google-patient")
+    public ResponseEntity<?> loginWithGooglePatient(@RequestBody GoogleLoginRequest request) {
+        try {
+            Map<String, String> response = userService.loginWithGoogleAsPatient(request.getIdToken());
+            return ResponseEntity.ok(response);
+        } catch (FirebaseAuthException e) {
+            // ID token invalid or expired
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                                 .body(Map.of("error", "Invalid Google ID token"));
+        } catch (IllegalArgumentException e) {
+            // Role mismatch (already a doctor/technician/admin) or missing email
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                 .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            // Any other internal error
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                 .body(Map.of("error", e.getMessage()));
+        }
+    }
 
 
 
