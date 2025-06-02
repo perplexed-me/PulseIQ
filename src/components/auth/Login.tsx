@@ -13,6 +13,9 @@ import { User as LucideUser, Mail, Phone, LogIn } from 'lucide-react';
 import { auth, googleProvider } from '@/lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 
+const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8085";
+
+
 const Login = () => {
   const [formData, setFormData] = useState({
     userId: '',
@@ -123,7 +126,7 @@ const Login = () => {
       const result = await signInWithPopup(auth, googleProvider);
       const idToken = await result.user.getIdToken();
 
-      const response = await fetch('http://localhost:8085/api/auth/google-patient', {
+      const response = await fetch(`${BASE_URL}/api/auth/google-patient`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken })
@@ -229,68 +232,24 @@ const Login = () => {
         </CardContent>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Login Method</Label>
-              <Select value={loginType} onValueChange={(value: 'userId' | 'email' | 'phone') => setLoginType(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="userId">User ID</SelectItem>
-                  <SelectItem value="email">Email Address</SelectItem>
-                  <SelectItem value="phone">Phone Number</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            
 
-            {loginType === 'userId' && (
+           
               <div className="space-y-2">
                 <Label htmlFor="userId">User ID</Label>
                 <div className="relative">
                   <LucideUser className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
                     id="userId"
-                    placeholder="e.g., D100, P200, T300"
+                    placeholder="e.g., D100, P200, T300 or email or phone"
                     value={formData.userId}
                     onChange={(e) => handleInputChange('userId', e.target.value)}
                     className="pl-10"
                   />
                 </div>
               </div>
-            )}
+            
 
-            {loginType === 'email' && (
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="your.email@example.com"
-                    value={formData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-            )}
-
-            {loginType === 'phone' && (
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="phone"
-                    placeholder="+1 (555) 123-4567"
-                    value={formData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-            )}
 
             {showRoleSelection && (
               <div className="space-y-2">
