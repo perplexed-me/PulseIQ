@@ -52,8 +52,7 @@ public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();
     
     // ✅ Only this line — exact origin
-    configuration.setAllowedOriginPatterns(List.of("*"));
-    configuration.setAllowedOriginPatterns(List.of("http://localhost:8080"));
+    configuration.setAllowedOriginPatterns(List.of("*", "http://localhost:8080", "http://192.168.89.164:8080"));
 
     configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     configuration.setAllowedHeaders(List.of("*"));
