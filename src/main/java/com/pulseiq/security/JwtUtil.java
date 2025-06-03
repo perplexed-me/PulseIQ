@@ -1,19 +1,33 @@
 package com.pulseiq.security;
 
-import io.jsonwebtoken.*;
-import io.jsonwebtoken.security.Keys;
+import java.util.Date;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
-import javax.crypto.SecretKey;
-import java.util.Date;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 
 @Component
 public class JwtUtil {
-    private final String SECRET = "pulseiq-secret-key-must-be-32-byte!";
-    private final SecretKey SECRET_KEY = Keys.hmacShaKeyFor(SECRET.getBytes());
+    @Value("${jwt.secret}")
+    private String SECRET;
 
-    private final long EXPIRATION_MS = 1000 * 60 * 60 * 10; // 10 hours
+    @Value("${jwt.expiration}")
+    private long EXPIRATION_MS;
+
+    private SecretKey SECRET_KEY;
+
+    @PostConstruct
+    public void init() {
+        this.SECRET_KEY = Keys.hmacShaKeyFor(SECRET.getBytes());
+    }
+
 
     public String generateToken(UserDetails userDetails) {
         System.out.println("Generating token for user: " + userDetails.getUsername());

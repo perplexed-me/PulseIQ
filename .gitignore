@@ -3,6 +3,11 @@ target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+src/main/.DS_Store
+
+# Spring Boot config
+src/main/resources/application.properties
+src/main/resources/firebase-service-account.json
 
 
 ### STS ###
