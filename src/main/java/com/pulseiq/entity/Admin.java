@@ -12,7 +12,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "admins", schema = "PulseIQ")
+@Table(name = "admins", schema = "pulseiq")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,7 +21,7 @@ public class Admin {
     @Id
     @Column(name = "admin_id")
     private String adminId;
-    
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "admin_id", referencedColumnName = "userId", insertable = false, updatable = false)
 
