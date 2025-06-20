@@ -7,7 +7,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "patients", schema = "PulseIQ")
+@Table(name = "patients", schema = "pulseiq")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -55,7 +55,13 @@ public class Patient {
         O_POSITIVE("O+"), O_NEGATIVE("O-");
 
         private final String value;
-        BloodGroup(String value) { this.value = value; }
-        public String getValue() { return value; }
+
+        BloodGroup(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
     }
 }
