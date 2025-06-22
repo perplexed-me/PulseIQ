@@ -1,8 +1,7 @@
 package com.pulseiq.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-import jakarta.validation.constraints.*;
-import java.math.BigDecimal;
 @Data
 public class DoctorRegistrationDto extends RegisterRequest {
     @NotBlank private String specialization;
