@@ -1,0 +1,50 @@
+name: CI Build & Test
+
+on:
+  push:
+    branches: [ userservice/backend ]
+  pull_request:
+    branches: [ userservice/backend ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_DB:     ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER:   ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }}"
+          --health-interval=10s --health-timeout=5s --health-retries=5
+
+    env:
+      SPRING_DATASOURCE_URL:      ${{ secrets.SPRING_DATASOURCE_URL }}
+      SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+      SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+      JWT_SECRET:                ${{ secrets.JWT_SECRET }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache Maven deps
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('userservice/backend/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven
+
+      - name: Build & Test
+        working-directory: userservice/backend
+        run: mvn clean verify -B
