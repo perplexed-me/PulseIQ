@@ -6,23 +6,21 @@ on:
   pull_request:
     branches: [ userservice/backend ]
 
+env:
+  POSTGRES_DB:                ${{ secrets.POSTGRES_DB }}
+  POSTGRES_USER:              ${{ secrets.POSTGRES_USER }}
+  POSTGRES_PASSWORD:          ${{ secrets.POSTGRES_PASSWORD }}
+  SPRING_DATASOURCE_URL:      ${{ secrets.SPRING_DATASOURCE_URL }}
+  SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+  SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+  JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
-    # Make your DB and app secrets available as shell env-vars
-    env:
-      POSTGRES_DB:                 ${{ secrets.POSTGRES_DB }}
-      POSTGRES_USER:               ${{ secrets.POSTGRES_USER }}
-      POSTGRES_PASSWORD:           ${{ secrets.POSTGRES_PASSWORD }}
-      SPRING_DATASOURCE_URL:       ${{ secrets.SPRING_DATASOURCE_URL }}
-      SPRING_DATASOURCE_USERNAME:  ${{ secrets.SPRING_DATASOURCE_USERNAME }}
-      SPRING_DATASOURCE_PASSWORD:  ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
-      JWT_SECRET:                  ${{ secrets.JWT_SECRET }}
-
     defaults:
       run:
-        working-directory: backend
+        working-directory: userservice/backend
 
     steps:
       - name: Checkout code
@@ -34,33 +32,39 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Start Postgres with secrets
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Start PostgreSQL
         run: |
-          docker run -d --name ci_db \
+          docker run -d --name postgres-ci \
             -e POSTGRES_DB="$POSTGRES_DB" \
             -e POSTGRES_USER="$POSTGRES_USER" \
             -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             -p 5432:5432 \
             postgres:14
-          # wait until Postgres is ready
-          until docker exec ci_db pg_isready -U "$POSTGRES_USER"; do
+          until docker exec postgres-ci pg_isready -U "$POSTGRES_USER"; do
             sleep 2
           done
 
-      - name: Cache Maven dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-maven-${{ hashFiles('userservice/backend/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven
-
-      - name: Build & run tests
+      - name: Build & test with Maven
         run: mvn clean verify -B
 
-      # ← you can plug in Sonar, coverage uploads, etc. here if needed
+      - name: Upload JaCoCo coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco/jacoco.xml
 
-      - name: Tear down Postgres
+      - name: Tear down PostgreSQL
         if: always()
         run: |
-          docker stop ci_db
-          docker rm   ci_db
+          docker stop postgres-ci
+          docker rm postgres-ci
+
+  
