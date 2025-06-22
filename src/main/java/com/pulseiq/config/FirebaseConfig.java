@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 
 import com.google.auth.oauth2.GoogleCredentials;
@@ -15,10 +16,12 @@ import com.google.firebase.FirebaseOptions;
 import jakarta.annotation.PostConstruct;
 
 /**
- * Firebase configuration that initializes FirebaseApp using JSON from
- * an environment variable or a classpath resource.
+ * Firebase configuration that initializes FirebaseApp exclusively
+ * from the FIREBASE_JSON environment variable.
+ * The bean is only created if FIREBASE_JSON is defined.
  */
 @Configuration
+@ConditionalOnProperty(name = "FIREBASE_JSON")
 public class FirebaseConfig {
 
     /**
@@ -29,31 +32,21 @@ public class FirebaseConfig {
 
     @PostConstruct
     public void init() throws IOException {
-        InputStream serviceAccount;
-
-        // Prefer JSON from environment variable for CI/containers
-        if (!firebaseJson.isBlank()) {
-            serviceAccount = new ByteArrayInputStream(
-                firebaseJson.getBytes(StandardCharsets.UTF_8)
-            );
-        } else {
-            // Fallback to classpath resource
-            serviceAccount = getClass().getClassLoader()
-                .getResourceAsStream("firebase-service-account.json");
+        // Skip firebase initialization if no JSON provided
+        if (firebaseJson == null || firebaseJson.isBlank()) {
+            return;
         }
 
-        if (serviceAccount == null) {
-            throw new IllegalStateException(
-                "Firebase service account JSON not provided via FIREBASE_JSON or classpath."
-            );
-        }
+        try (InputStream serviceAccount = new ByteArrayInputStream(
+                 firebaseJson.getBytes(StandardCharsets.UTF_8))) {
 
-        FirebaseOptions options = FirebaseOptions.builder()
-            .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-            .build();
+            FirebaseOptions options = FirebaseOptions.builder()
+                .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                .build();
 
-        if (FirebaseApp.getApps().isEmpty()) {
-            FirebaseApp.initializeApp(options);
+            if (FirebaseApp.getApps().isEmpty()) {
+                FirebaseApp.initializeApp(options);
+            }
         }
     }
 }
