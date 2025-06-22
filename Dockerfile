@@ -34,14 +34,40 @@
 # # Run the Spring Boot application
 # ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 
+# .............
 
+# FROM eclipse-temurin:21-jre-jammy
+
+# WORKDIR /app
+
+# COPY target/*.jar app.jar
+
+# EXPOSE 8085
+
+# ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
+# -------------
+
+    ###############################################################################
+# Stage 1 – build the jar
+###############################################################################
+FROM maven:3.9.7-eclipse-temurin-21 AS build
+
+WORKDIR /build
+
+COPY pom.xml .
+COPY src ./src
+RUN mvn -B clean package -DskipTests
+
+###############################################################################
+# Stage 2 – small runtime image
+###############################################################################
 FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
-
-COPY target/*.jar app.jar
+COPY --from=build /build/target/*.jar app.jar
 
 EXPOSE 8085
-
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
 
