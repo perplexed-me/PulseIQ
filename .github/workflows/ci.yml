@@ -10,23 +10,19 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_DB:     ${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER:   ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd="pg_isready -U ${{ secrets.POSTGRES_USER }} -d ${{ secrets.POSTGRES_DB }}"
-          --health-interval=10s --health-timeout=5s --health-retries=5
-
+    # Make your DB and app secrets available as shell env-vars
     env:
-      SPRING_DATASOURCE_URL:      ${{ secrets.SPRING_DATASOURCE_URL }}
-      SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
-      SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
-      JWT_SECRET:                ${{ secrets.JWT_SECRET }}
+      POSTGRES_DB:                 ${{ secrets.POSTGRES_DB }}
+      POSTGRES_USER:               ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD:           ${{ secrets.POSTGRES_PASSWORD }}
+      SPRING_DATASOURCE_URL:       ${{ secrets.SPRING_DATASOURCE_URL }}
+      SPRING_DATASOURCE_USERNAME:  ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+      SPRING_DATASOURCE_PASSWORD:  ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+      JWT_SECRET:                  ${{ secrets.JWT_SECRET }}
+
+    defaults:
+      run:
+        working-directory: userservice/backend
 
     steps:
       - name: Checkout code
@@ -38,13 +34,33 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Cache Maven deps
+      - name: Start Postgres with secrets
+        run: |
+          docker run -d --name ci_db \
+            -e POSTGRES_DB="$POSTGRES_DB" \
+            -e POSTGRES_USER="$POSTGRES_USER" \
+            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            -p 5432:5432 \
+            postgres:14
+          # wait until Postgres is ready
+          until docker exec ci_db pg_isready -U "$POSTGRES_USER"; do
+            sleep 2
+          done
+
+      - name: Cache Maven dependencies
         uses: actions/cache@v3
         with:
           path: ~/.m2
           key: ${{ runner.os }}-maven-${{ hashFiles('userservice/backend/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven
 
-      - name: Build & Test
-        working-directory: userservice/backend
+      - name: Build & run tests
         run: mvn clean verify -B
+
+      # ← you can plug in Sonar, coverage uploads, etc. here if needed
+
+      - name: Tear down Postgres
+        if: always()
+        run: |
+          docker stop ci_db
+          docker rm   ci_db
