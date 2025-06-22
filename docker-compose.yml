@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:14
+    container_name: pulseiq_postgres
+    environment:
+      POSTGRES_DB: pulseiq_db
+      POSTGRES_USER: pulseiq_user
+      POSTGRES_PASSWORD: cse408
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-schema.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    networks:
+      - pulseiq-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "pulseiq_user", "-d", "pulseiq_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: pulseiq_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    networks:
+      - pulseiq-network
+    env_file:
+      - .env
+
+volumes:
+  pgdata:
+
+networks:
+  pulseiq-network:
