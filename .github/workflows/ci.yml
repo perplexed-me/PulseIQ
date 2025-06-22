@@ -54,11 +54,11 @@ jobs:
           docker exec postgres-ci \
             psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
             -c "CREATE SCHEMA IF NOT EXISTS pulseiq;"
-      - name: Add Firebase service account
-        run: |
-          # adjust path if your code lives under a subfolder
-          mkdir -p src/main/resources
-          echo "${{ secrets.FIREBASE_JSON }}" > src/main/resources/firebase-service-account.json
+      # - name: Add Firebase service account
+      #   run: |
+      #     # adjust path if your code lives under a subfolder
+      #     mkdir -p src/main/resources
+      #     echo "${{ secrets.FIREBASE_JSON }}" > src/main/resources/firebase-service-account.json
 
       - name: Build & test with Maven
         env:
