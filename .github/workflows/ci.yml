@@ -18,7 +18,9 @@ env:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
+    defaults:
+      run:
+        working-directory: .    # run from repo root
 
     steps:
       - name: Checkout code
@@ -34,7 +36,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('src/pom.xml') }}
+          key: ${{ runner.os }}-maven-${{ hashFiles('pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
 
@@ -44,11 +46,8 @@ jobs:
             -e POSTGRES_DB="$POSTGRES_DB" \
             -e POSTGRES_USER="$POSTGRES_USER" \
             -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            -p 5432:5432 \
-            postgres:14
-          until docker exec postgres-ci pg_isready -U "$POSTGRES_USER"; do
-            sleep 2
-          done
+            -p 5432:5432 postgres:14
+          until docker exec postgres-ci pg_isready -U "$POSTGRES_USER"; do sleep 2; done
 
       - name: Build & test with Maven
         run: mvn clean verify -B
@@ -57,12 +56,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
-          path: backend/target/site/jacoco/jacoco.xml
+          path: target/site/jacoco/jacoco.xml
 
       - name: Tear down PostgreSQL
         if: always()
         run: |
           docker stop postgres-ci
           docker rm postgres-ci
-
-  
