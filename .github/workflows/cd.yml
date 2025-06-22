@@ -50,36 +50,45 @@ jobs:
           echo "${{ secrets.AZURE_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # -- Deploy on Azure VM ----------------------------------------
       - name: Deploy on Azure VM
         uses: appleboy/ssh-action@v1
         with:
           host:     ${{ secrets.AZURE_SSH_HOST }}
           username: ${{ secrets.AZURE_SSH_USER }}
           key:      ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
-          envs:     FIREBASE_JSON   # makes the secret available inside script
-          script: |
-            set -e
+          envs:     FIREBASE_JSON
+        script: |
+          set -e
 
-            echo "=== Pulling latest image ==="
-            docker pull ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
+          echo "=== Pull latest image ==="
+          docker pull ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
 
-            echo "=== Re-creating containers ==="
-            docker stop pulseiq_backend postgres_db 2>/dev/null || true
-            docker rm   pulseiq_backend postgres_db 2>/dev/null || true
-
+          echo "=== Ensure Postgres is running ==="
+          if docker ps -a --format '{{.Names}}' | grep -q '^postgres_db$'; then
+            # container exists: start if it’s stopped
+            docker start postgres_db || true
+          else
+            # container missing: create it
             docker run -d --name postgres_db \
               -e POSTGRES_DB=${{ secrets.POSTGRES_DB }} \
               -e POSTGRES_USER=${{ secrets.POSTGRES_USER }} \
               -e POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
               -p 5432:5432 postgres:14
+            # create schema the first time
+            until docker exec postgres_db pg_isready -U "${{ secrets.POSTGRES_USER }}"; do sleep 2; done
+            docker exec postgres_db \
+              psql -U "${{ secrets.POSTGRES_USER }}" -d "${{ secrets.POSTGRES_DB }}" \
+              -c 'CREATE SCHEMA IF NOT EXISTS pulseiq;'
+          fi
 
-            docker run -d --name pulseiq_backend --link postgres_db \
-              -p 8085:8085 \
-              -e FIREBASE_JSON="$FIREBASE_JSON" \
-              -e SPRING_DATASOURCE_URL=${{ secrets.SPRING_DATASOURCE_URL }} \
-              -e SPRING_DATASOURCE_USERNAME=${{ secrets.SPRING_DATASOURCE_USERNAME }} \
-              -e SPRING_DATASOURCE_PASSWORD=${{ secrets.SPRING_DATASOURCE_PASSWORD }} \
-              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
-              -e APP_CORS_ALLOWED_ORIGINS=${{ secrets.APP_CORS_ALLOWED_ORIGINS }} \
-              ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
+          echo "=== Re-create backend container ==="
+          docker rm -f pulseiq_backend 2>/dev/null || true                    # remove old one
+          docker run -d --name pulseiq_backend --link postgres_db \
+            -p 8085:8085 \
+            -e FIREBASE_JSON="$FIREBASE_JSON" \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_db:5432/${{ secrets.POSTGRES_DB }}?currentSchema=pulseiq \
+            -e SPRING_DATASOURCE_USERNAME=${{ secrets.POSTGRES_USER }} \
+            -e SPRING_DATASOURCE_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+            -e APP_CORS_ALLOWED_ORIGINS=${{ secrets.APP_CORS_ALLOWED_ORIGINS }} \
+            ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
