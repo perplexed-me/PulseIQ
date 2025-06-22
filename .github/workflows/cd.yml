@@ -23,7 +23,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build & Push Docker Image
-        working-directory: userservice/backend
+        working-directory: .
         run: |
           docker build -t ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest .
           docker push   ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
