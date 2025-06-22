@@ -2,9 +2,9 @@ name: CI Build & Test
 
 on:
   push:
-    branches: [ userservice/backend ]
+    branches: [ backend ]
   pull_request:
-    branches: [ userservice/backend ]
+    branches: [ backend ]
 
 env:
   POSTGRES_DB:                ${{ secrets.POSTGRES_DB }}
