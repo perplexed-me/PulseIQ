@@ -14,13 +14,11 @@ env:
 
 jobs:
   build-and-test:
-    # if you have a self-hosted Azure VM runner, replace with:
-    # runs-on: [self-hosted, linux]
     runs-on: ubuntu-latest
 
     defaults:
       run:
-        working-directory: .    # your pom.xml is in the repo root
+        working-directory: .    # your pom.xml lives at the repo root
 
     steps:
       - name: Checkout code
@@ -46,11 +44,18 @@ jobs:
             -e POSTGRES_DB="$POSTGRES_DB" \
             -e POSTGRES_USER="$POSTGRES_USER" \
             -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            -p 5432:5432 postgres:14
+            -p 5432:5432 \
+            postgres:14
+          # wait until Postgres ready
           until docker exec postgres-ci pg_isready -U "$POSTGRES_USER"; do sleep 2; done
 
+      - name: Initialize DB schema
+        run: |
+          docker exec postgres-ci \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            -c "CREATE SCHEMA IF NOT EXISTS pulseiq;"
+
       - name: Build & test with Maven
-        # inject the Spring datasource env-vars so tests see a real URL…
         env:
           SPRING_DATASOURCE_URL:      jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}?currentSchema=pulseiq
           SPRING_DATASOURCE_USERNAME: ${{ env.POSTGRES_USER }}
