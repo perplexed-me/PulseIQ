@@ -1,9 +1,12 @@
 package com.pulseiq.service;
 
-import com.google.firebase.auth.FirebaseAuthException;
-import com.pulseiq.dto.*;
-
 import java.util.Map;
+
+import com.google.firebase.auth.FirebaseAuthException;
+import com.pulseiq.dto.DoctorRegistrationDto;
+import com.pulseiq.dto.LoginRequest;
+import com.pulseiq.dto.PatientRegistrationDto;
+import com.pulseiq.dto.TechnicianRegistrationDto;
 
 public interface UserService {
 //    void register(RegisterRequest request);
