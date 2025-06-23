@@ -7,73 +7,65 @@ on:
     branches: [ backend ]
 
 env:
-  POSTGRES_DB:       ${{ secrets.POSTGRES_DB }}
-  POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
-  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-  JWT_SECRET:        ${{ secrets.JWT_SECRET }}
-  FIREBASE_JSON:     ${{ secrets.FIREBASE_JSON }}
+  SPRING_DATASOURCE_URL:      ${{ secrets.SPRING_DATASOURCE_URL }}
+  SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+  SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+  JWT_SECRET:                ${{ secrets.JWT_SECRET }}
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: .    # repo root
+        working-directory: .    # where your pom.xml lives
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up JDK 21
         uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 21
+          java-version: '21'
 
-      - name: Cache Maven deps
+      - name: Cache Maven dependencies
         uses: actions/cache@v3
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-      # ─── Local Postgres for tests ───────────────────────────────
-      - name: Start Postgres
+      # ── Install PostgreSQL client so we can run schema SQL ───────────────────
+      - name: Install psql client
         run: |
-          docker run -d --name postgres-ci \
-            -e POSTGRES_DB="$POSTGRES_DB" \
-            -e POSTGRES_USER="$POSTGRES_USER" \
-            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            -p 5432:5432 postgres:14
-          until docker exec postgres-ci pg_isready -U "$POSTGRES_USER"; do sleep 1; done
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
-      - name: Create pulseiq schema
+      # ── Ensure the pulseiq schema exists in Neon (one-time safe) ────────────
+      - name: Create pulseiq schema in Neon
         run: |
-          docker exec postgres-ci \
-            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-            -c "CREATE SCHEMA IF NOT EXISTS pulseiq;"
+          PGPASSWORD="${{ secrets.SPRING_DATASOURCE_PASSWORD }}" \
+          psql \
+            --host=ep-fancy-pine-a944h189-pooler.gwc.azure.neon.tech \
+            --port=5432 \
+            --username="${{ secrets.SPRING_DATASOURCE_USERNAME }}" \
+            --dbname=pulseiq_db \
+            --quiet \
+            --command="CREATE SCHEMA IF NOT EXISTS pulseiq;"
 
-      - name: Inject Firebase JSON
+      # ── Build & test with Maven against Neon ─────────────────────────────────
+      - name: Build & test with Maven
         run: |
-          mkdir -p src/main/resources
-          echo "${FIREBASE_JSON}" > src/main/resources/firebase-service-account.json
+          mvn clean verify -B \
+            "-Dspring.datasource.url=${SPRING_DATASOURCE_URL}" \
+            "-Dspring.datasource.username=${SPRING_DATASOURCE_USERNAME}" \
+            "-Dspring.datasource.password=${SPRING_DATASOURCE_PASSWORD}" \
+            "-Dspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 
-      - name: Build & test
-        env:
-          SPRING_DATASOURCE_URL:      jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}?currentSchema=pulseiq
-          SPRING_DATASOURCE_USERNAME: ${{ env.POSTGRES_USER }}
-          SPRING_DATASOURCE_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-        run: mvn clean verify -B \
-            -Dspring.datasource.url=${SPRING_DATASOURCE_URL} \
-            -Dspring.datasource.username=${SPRING_DATASOURCE_USERNAME} \
-            -Dspring.datasource.password=${SPRING_DATASOURCE_PASSWORD} \
-            -Dspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload JaCoCo coverage report
+        uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: backend-coverage
           path: target/site/jacoco/jacoco.xml
-
-      - name: Tear down Postgres
-        if: always()
-        run: |
-          docker stop postgres-ci
-          docker rm postgres-ci
