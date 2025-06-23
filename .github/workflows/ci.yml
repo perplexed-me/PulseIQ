@@ -7,19 +7,18 @@ on:
     branches: [ backend ]
 
 env:
-  # ── use Neon instead of local Postgres ─────────────────────
-  SPRING_DATASOURCE_URL:       ${{ secrets.SPRING_DATASOURCE_URL_REMOTE }}
-  SPRING_DATASOURCE_USERNAME:  ${{ secrets.SPRING_DATASOURCE_USERNAME_REMOTE }}
-  SPRING_DATASOURCE_PASSWORD:  ${{ secrets.SPRING_DATASOURCE_PASSWORD_REMOTE }}
-  JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
+  # Neon (remote) settings
+  SPRING_DATASOURCE_URL:      ${{ secrets.SPRING_DATASOURCE_URL_REMOTE }}
+  SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME_REMOTE }}
+  SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD_REMOTE }}
+  JWT_SECRET:                ${{ secrets.JWT_SECRET }}
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     defaults:
       run:
-        working-directory: .    # your pom.xml lives at repo root
+        working-directory: .    # where your pom.xml lives
 
     steps:
       - name: Checkout code
@@ -39,38 +38,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      # ────────────────────────────────────────────────────────────
-      # If you prefer to keep a local Postgres for faster, offline CI,
-      # re-enable these three steps below instead of using a remote DB.
-      #
-      #- name: Start PostgreSQL
-      #  run: |
-      #    docker run -d --name postgres-ci \
-      #      -e POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
-      #      -e POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
-      #      -e POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
-      #      -p 5432:5432 postgres:14
-      #    until docker exec postgres-ci pg_isready -U "${{ secrets.POSTGRES_USER }}"; do sleep 2; done
-      #
-      #- name: Initialize DB schema
-      #  run: |
-      #    docker exec postgres-ci \
-      #      psql -U "${{ secrets.POSTGRES_USER }}" -d "${{ secrets.POSTGRES_DB }}" \
-      #      -c "CREATE SCHEMA IF NOT EXISTS pulseiq;"
-      #
-      #- name: Tear down PostgreSQL
-      #  if: always()
-      #  run: |
-      #    docker stop postgres-ci
-      #    docker rm   postgres-ci
-      # ────────────────────────────────────────────────────────────
+      # ── Install PostgreSQL client so we can run schema SQL ───────────────────
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
 
+      # ── Ensure the pulseiq schema exists in Neon (one-time safe) ────────────
+      - name: Create pulseiq schema in Neon
+        run: |
+          PGPASSWORD="${{ secrets.SPRING_DATASOURCE_PASSWORD }}" \
+          psql \
+            --host=ep-fancy-pine-a944h189-pooler.gwc.azure.neon.tech \
+            --port=5432 \
+            --username="${{ secrets.SPRING_DATASOURCE_USERNAME }}" \
+            --dbname=pulseiq_db \
+            --quiet \
+            --command="CREATE SCHEMA IF NOT EXISTS pulseiq;"
+
+      # ── Build & test with Maven against Neon ─────────────────────────────────
       - name: Build & test with Maven
-        env:
-          # override Spring’s datasource with your Neon cluster
-          SPRING_DATASOURCE_URL:      ${{ env.SPRING_DATASOURCE_URL }}
-          SPRING_DATASOURCE_USERNAME: ${{ env.SPRING_DATASOURCE_USERNAME }}
-          SPRING_DATASOURCE_PASSWORD: ${{ env.SPRING_DATASOURCE_PASSWORD }}
         run: |
           mvn clean verify -B \
             -Dspring.datasource.url=${SPRING_DATASOURCE_URL} \
