@@ -64,24 +64,28 @@ jobs:
             echo "=== Pull latest image ==="
             docker pull ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
 
-            echo "=== Ensure Postgres is running ==="
-            if docker ps -a --format '{{.Names}}' | grep -q '^postgres_db$'; then
-              docker start postgres_db || true            # start if stopped
-            else
-              docker run -d --name postgres_db \
-                -e POSTGRES_DB=${{ secrets.POSTGRES_DB }} \
-                -e POSTGRES_USER=${{ secrets.POSTGRES_USER }} \
-                -e POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
-                -p 5432:5432 postgres:14
-
-              until docker exec postgres_db pg_isready -U "${{ secrets.POSTGRES_USER }}"; do
-                sleep 2
-              done
-
-              docker exec postgres_db \
-                psql -U "${{ secrets.POSTGRES_USER }}" -d "${{ secrets.POSTGRES_DB }}" \
-                -c 'CREATE SCHEMA IF NOT EXISTS pulseiq;'
-            fi
+            # ── OPTIONAL: ensure local Postgres container ───────────────
+            # Comment out this entire block if you’re using a managed DB (e.g. Neon)
+            #
+            # if docker ps -a --format '{{.Names}}' | grep -q '^postgres_db$'; then
+            #   docker start postgres_db || true            # start if stopped
+            # else
+            #   docker run -d --name postgres_db \
+            #     -e POSTGRES_DB=${{ secrets.POSTGRES_DB }} \
+            #     -e POSTGRES_USER=${{ secrets.POSTGRES_USER }} \
+            #     -e POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            #     -p 5432:5432 postgres:14
+            #
+            #   until docker exec postgres_db pg_isready -U "${{ secrets.POSTGRES_USER }}"; do
+            #     sleep 2
+            #   done
+            #
+            #   docker exec postgres_db \
+            #     psql -U "${{ secrets.POSTGRES_USER }}" -d "${{ secrets.POSTGRES_DB }}" \
+            #     -c 'CREATE SCHEMA IF NOT EXISTS pulseiq;'
+            # fi
+            #
+            # ── end optional Postgres block ───────────────────────────────
 
             echo "=== Re-create backend container ==="
             docker rm -f pulseiq_backend 2>/dev/null || true

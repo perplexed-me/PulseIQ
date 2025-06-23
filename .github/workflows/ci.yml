@@ -7,9 +7,10 @@ on:
     branches: [ backend ]
 
 env:
-  POSTGRES_DB:                ${{ secrets.POSTGRES_DB }}
-  POSTGRES_USER:              ${{ secrets.POSTGRES_USER }}
-  POSTGRES_PASSWORD:          ${{ secrets.POSTGRES_PASSWORD }}
+  # ── use Neon instead of local Postgres ─────────────────────
+  SPRING_DATASOURCE_URL:       ${{ secrets.SPRING_DATASOURCE_URL_REMOTE }}
+  SPRING_DATASOURCE_USERNAME:  ${{ secrets.SPRING_DATASOURCE_USERNAME_REMOTE }}
+  SPRING_DATASOURCE_PASSWORD:  ${{ secrets.SPRING_DATASOURCE_PASSWORD_REMOTE }}
   JWT_SECRET:                 ${{ secrets.JWT_SECRET }}
 
 jobs:
@@ -18,7 +19,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: .    # your pom.xml lives at the repo root
+        working-directory: .    # your pom.xml lives at repo root
 
     steps:
       - name: Checkout code
@@ -38,33 +39,38 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Start PostgreSQL
-        run: |
-          docker run -d --name postgres-ci \
-            -e POSTGRES_DB="$POSTGRES_DB" \
-            -e POSTGRES_USER="$POSTGRES_USER" \
-            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-            -p 5432:5432 \
-            postgres:14
-          # wait until Postgres ready
-          until docker exec postgres-ci pg_isready -U "$POSTGRES_USER"; do sleep 2; done
-
-      - name: Initialize DB schema
-        run: |
-          docker exec postgres-ci \
-            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-            -c "CREATE SCHEMA IF NOT EXISTS pulseiq;"
-      # - name: Add Firebase service account
-      #   run: |
-      #     # adjust path if your code lives under a subfolder
-      #     mkdir -p src/main/resources
-      #     echo "${{ secrets.FIREBASE_JSON }}" > src/main/resources/firebase-service-account.json
+      # ────────────────────────────────────────────────────────────
+      # If you prefer to keep a local Postgres for faster, offline CI,
+      # re-enable these three steps below instead of using a remote DB.
+      #
+      #- name: Start PostgreSQL
+      #  run: |
+      #    docker run -d --name postgres-ci \
+      #      -e POSTGRES_DB="${{ secrets.POSTGRES_DB }}" \
+      #      -e POSTGRES_USER="${{ secrets.POSTGRES_USER }}" \
+      #      -e POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}" \
+      #      -p 5432:5432 postgres:14
+      #    until docker exec postgres-ci pg_isready -U "${{ secrets.POSTGRES_USER }}"; do sleep 2; done
+      #
+      #- name: Initialize DB schema
+      #  run: |
+      #    docker exec postgres-ci \
+      #      psql -U "${{ secrets.POSTGRES_USER }}" -d "${{ secrets.POSTGRES_DB }}" \
+      #      -c "CREATE SCHEMA IF NOT EXISTS pulseiq;"
+      #
+      #- name: Tear down PostgreSQL
+      #  if: always()
+      #  run: |
+      #    docker stop postgres-ci
+      #    docker rm   postgres-ci
+      # ────────────────────────────────────────────────────────────
 
       - name: Build & test with Maven
         env:
-          SPRING_DATASOURCE_URL:      jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}?currentSchema=pulseiq
-          SPRING_DATASOURCE_USERNAME: ${{ env.POSTGRES_USER }}
-          SPRING_DATASOURCE_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          # override Spring’s datasource with your Neon cluster
+          SPRING_DATASOURCE_URL:      ${{ env.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ env.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ env.SPRING_DATASOURCE_PASSWORD }}
         run: |
           mvn clean verify -B \
             -Dspring.datasource.url=${SPRING_DATASOURCE_URL} \
@@ -77,9 +83,3 @@ jobs:
         with:
           name: backend-coverage
           path: target/site/jacoco/jacoco.xml
-
-      - name: Tear down PostgreSQL
-        if: always()
-        run: |
-          docker stop postgres-ci
-          docker rm postgres-ci
