@@ -1,33 +1,79 @@
-# ── Deploy on Azure VM ─────────────────────────────────────────
-- name: Deploy on Azure VM
-  uses: appleboy/ssh-action@v1
-  with:
-    host:     ${{ secrets.AZURE_SSH_HOST }}
-    username: ${{ secrets.AZURE_SSH_USER }}
-    key:      ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
-    envs:
-      - FIREBASE_JSON
-      - SPRING_DATASOURCE_URL
-      - SPRING_DATASOURCE_USERNAME
-      - SPRING_DATASOURCE_PASSWORD
-      - JWT_SECRET
-      - APP_CORS_ALLOWED_ORIGINS
-  script: |
-    set -e
+name: CD Deploy to Azure VM
 
-    echo "=== Pull latest image ==="
-    docker pull ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
+on:
+  workflow_run:
+    workflows: ["CI Build & Test"]
+    types: [completed]
 
-    echo "=== Remove old backend container ==="
-    docker rm -f pulseiq_backend 2>/dev/null || true
+jobs:
+  deploy:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      (
+        github.event.workflow_run.head_branch == 'backend' ||
+        github.event.workflow_run.head_branch == 'userservice/backend'
+      )
+    runs-on: ubuntu-latest
 
-    echo "=== Start new backend container ==="
-    docker run -d --name pulseiq_backend \
-      -p 8085:8085 \
-      -e FIREBASE_JSON="$FIREBASE_JSON" \
-      -e SPRING_DATASOURCE_URL="$SPRING_DATASOURCE_URL" \
-      -e SPRING_DATASOURCE_USERNAME="$SPRING_DATASOURCE_USERNAME" \
-      -e SPRING_DATASOURCE_PASSWORD="$SPRING_DATASOURCE_PASSWORD" \
-      -e JWT_SECRET="$JWT_SECRET" \
-      -e APP_CORS_ALLOWED_ORIGINS="$APP_CORS_ALLOWED_ORIGINS" \
-      ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
+    steps:
+      - name: Debug workflow_run context
+        run: |
+          echo "Deploying commit : ${{ github.event.workflow_run.head_sha }}"
+          echo "From branch      : ${{ github.event.workflow_run.head_branch }}"
+          echo "Triggering event : ${{ github.event.workflow_run.event }}"
+
+      - name: Checkout triggering commit
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref:        ${{ github.event.workflow_run.head_sha }}
+
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & Push Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest .
+          docker push   ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AZURE_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy on Azure VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host:     ${{ secrets.AZURE_SSH_HOST }}
+          username: ${{ secrets.AZURE_SSH_USER }}
+          key:      ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
+          envs:
+            - FIREBASE_JSON
+            - SPRING_DATASOURCE_URL
+            - SPRING_DATASOURCE_USERNAME
+            - SPRING_DATASOURCE_PASSWORD
+            - JWT_SECRET
+            - APP_CORS_ALLOWED_ORIGINS
+          script: |
+            set -e
+
+            echo "=== Pull latest image ==="
+            docker pull ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
+
+            echo "=== Remove old backend container ==="
+            docker rm -f pulseiq_backend 2>/dev/null || true
+
+            echo "=== Start new backend container ==="
+            docker run -d --name pulseiq_backend \
+              -p 8085:8085 \
+              -e FIREBASE_JSON="$FIREBASE_JSON" \
+              -e SPRING_DATASOURCE_URL="$SPRING_DATASOURCE_URL" \
+              -e SPRING_DATASOURCE_USERNAME="$SPRING_DATASOURCE_USERNAME" \
+              -e SPRING_DATASOURCE_PASSWORD="$SPRING_DATASOURCE_PASSWORD" \
+              -e JWT_SECRET="$JWT_SECRET" \
+              -e APP_CORS_ALLOWED_ORIGINS="$APP_CORS_ALLOWED_ORIGINS" \
+              ${{ secrets.DOCKER_USERNAME }}/pulseiq-app:latest
