@@ -1,0 +1,27 @@
+node_modules/
+.env
+package-lock.json
+# packege.json (this was likely a typo - commented out)
+
+# Backend specific
+backend/.env
+backend/target/
+*.log
+
+# Frontend specific
+frontend/dist/
+frontend/build/
+frontend/node_modules/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
