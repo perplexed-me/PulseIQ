@@ -1,0 +1,238 @@
+name: CD Deploy to Docker Hub & Azure
+
+on:
+  workflow_run:
+    workflows: ["CI Build & Test"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  build-and-push:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/pulseiq-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/pulseiq-frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.production
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-to-azure:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to Azure VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.AZURE_SSH_HOST }}
+          username: ${{ secrets.AZURE_SSH_USER }}
+          key: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+
+            # Create application directory
+            mkdir -p ~/pulseiq-app
+            cd ~/pulseiq-app
+
+            # Create environment file for production
+            cat > .env.azure << EOF
+            DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            FRONTEND_URL=http://${{ secrets.AZURE_SSH_HOST }}:8080
+            BACKEND_URL=http://${{ secrets.AZURE_SSH_HOST }}:8085
+            FIREBASE_ENABLED=true
+            EOF
+
+            # Create docker-compose.azure.yml
+            cat > docker-compose.azure.yml << 'EOF'
+            version: '3.8'
+
+            services:
+              db:
+                image: postgres:15-alpine
+                container_name: pulseiq_postgres
+                environment:
+                  POSTGRES_DB: pulseiq_db
+                  POSTGRES_USER: pulseiq_user
+                  POSTGRES_PASSWORD: ${DB_PASSWORD}
+                  POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+                ports:
+                  - "5432:5432"
+                volumes:
+                  - postgres_data:/var/lib/postgresql/data
+                  - ./init-schema.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+                networks:
+                  - pulseiq-network
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U pulseiq_user -d pulseiq_db"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+                  start_period: 30s
+                restart: unless-stopped
+
+              backend:
+                image: ${{ secrets.DOCKER_USERNAME }}/pulseiq-backend:latest
+                container_name: pulseiq_backend
+                depends_on:
+                  db:
+                    condition: service_healthy
+                ports:
+                  - "8085:8085"
+                networks:
+                  - pulseiq-network
+                environment:
+                  - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/pulseiq_db?currentSchema=pulseiq
+                  - SPRING_DATASOURCE_USERNAME=pulseiq_user
+                  - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+                  - JWT_SECRET=${JWT_SECRET}
+                  - FIREBASE_ENABLED=true
+                  - APP_CORS_ALLOWED_ORIGINS=${FRONTEND_URL},http://localhost:8080
+                volumes:
+                  - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+                  start_period: 60s
+                restart: unless-stopped
+
+              frontend:
+                image: ${{ secrets.DOCKER_USERNAME }}/pulseiq-frontend:latest
+                container_name: pulseiq_frontend
+                depends_on:
+                  backend:
+                    condition: service_healthy
+                ports:
+                  - "8080:80"
+                networks:
+                  - pulseiq-network
+                environment:
+                  - VITE_BACKEND_URL=${BACKEND_URL}
+                healthcheck:
+                  test: ["CMD", "curl", "-f", "http://localhost/"]
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+                restart: unless-stopped
+
+            volumes:
+              postgres_data:
+                driver: local
+
+            networks:
+              pulseiq-network:
+                driver: bridge
+            EOF
+
+            # Create database initialization script
+            cat > init-schema.sql << 'EOF'
+            -- PulseIQ Database Initialization Script
+            CREATE SCHEMA IF NOT EXISTS pulseiq;
+            ALTER DATABASE pulseiq_db SET search_path TO pulseiq;
+            GRANT USAGE ON SCHEMA pulseiq TO pulseiq_user;
+            GRANT CREATE ON SCHEMA pulseiq TO pulseiq_user;
+            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA pulseiq TO pulseiq_user;
+            GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA pulseiq TO pulseiq_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA pulseiq GRANT ALL ON TABLES TO pulseiq_user;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA pulseiq GRANT ALL ON SEQUENCES TO pulseiq_user;
+            EOF
+
+            # Create Firebase service account file
+            echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > firebase-service-account.json
+
+            # Pull latest images
+            echo "Pulling latest images..."
+            docker-compose -f docker-compose.azure.yml --env-file .env.azure pull
+
+            # Stop existing containers
+            echo "Stopping existing containers..."
+            docker-compose -f docker-compose.azure.yml down || true
+
+            # Clean up unused resources
+            docker system prune -f || true
+
+            # Start the application
+            echo "Starting PulseIQ application..."
+            docker-compose -f docker-compose.azure.yml --env-file .env.azure up -d
+
+            # Wait for services to be healthy
+            echo "Waiting for services to be healthy..."
+            timeout 300 bash -c '
+              while true; do
+                if docker-compose -f docker-compose.azure.yml ps | grep -q "healthy"; then
+                  echo "Services are healthy!"
+                  break
+                fi
+                echo "Waiting for services to start..."
+                sleep 10
+              done
+            '
+
+            # Show service status
+            echo "=== Service Status ==="
+            docker-compose -f docker-compose.azure.yml ps
+
+            # Show recent logs
+            echo "=== Recent Logs ==="
+            docker-compose -f docker-compose.azure.yml logs --tail=10
+
+            echo "✅ Deployment completed successfully!"
+            echo "Frontend: http://${{ secrets.AZURE_SSH_HOST }}:8080"
+            echo "Backend: http://${{ secrets.AZURE_SSH_HOST }}:8085"

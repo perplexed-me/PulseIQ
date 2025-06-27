@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # Backend Service - connects to Azure PostgreSQL
+  backend:
+    image: ${DOCKER_USERNAME}/pulseiq-backend:latest
+    container_name: pulseiq_backend
+    ports:
+      - "8085:8085"
+    networks:
+      - pulseiq-network
+    environment:
+      # Connect to Azure Database for PostgreSQL
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${AZURE_DB_SERVER}.postgres.database.azure.com:5432/${AZURE_DB_NAME}?sslmode=require&currentSchema=pulseiq
+      - SPRING_DATASOURCE_USERNAME=${AZURE_DB_USERNAME}@${AZURE_DB_SERVER}
+      - SPRING_DATASOURCE_PASSWORD=${AZURE_DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - FIREBASE_ENABLED=true
+      - APP_CORS_ALLOWED_ORIGINS=${FRONTEND_URL}
+    volumes:
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Frontend Service
+  frontend:
+    image: ${DOCKER_USERNAME}/pulseiq-frontend:latest
+    container_name: pulseiq_frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    networks:
+      - pulseiq-network
+    environment:
+      - VITE_BACKEND_URL=${BACKEND_URL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+networks:
+  pulseiq-network:
+    driver: bridge

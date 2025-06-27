@@ -1,0 +1,102 @@
+name: CI Build & Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    env:
+      SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+      SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+      SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # ── Install PostgreSQL client so we can run schema SQL ───────────────────
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      # ── Ensure the pulseiq schema exists in Neon (one-time safe) ────────────
+      - name: Create pulseiq schema in Neon
+        run: |
+          PGPASSWORD="${{ secrets.SPRING_DATASOURCE_PASSWORD }}" \
+          psql \
+            --host=ep-fancy-pine-a944h189-pooler.gwc.azure.neon.tech \
+            --port=5432 \
+            --username="${{ secrets.SPRING_DATASOURCE_USERNAME }}" \
+            --dbname=pulseiq_db \
+            --quiet \
+            --command="CREATE SCHEMA IF NOT EXISTS pulseiq;"
+
+      # ── Build & test with Maven against Neon ─────────────────────────────────
+      - name: Build & test with Maven
+        run: |
+          mvn clean verify -B \
+            "-Dspring.datasource.url=${SPRING_DATASOURCE_URL}" \
+            "-Dspring.datasource.username=${SPRING_DATASOURCE_USERNAME}" \
+            "-Dspring.datasource.password=${SPRING_DATASOURCE_PASSWORD}" \
+            "-Dspring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
+
+      - name: Upload JaCoCo coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/target/site/jacoco/jacoco.xml
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist/
