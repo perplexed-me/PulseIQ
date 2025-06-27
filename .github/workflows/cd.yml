@@ -98,7 +98,7 @@ jobs:
             cd ~/pulseiq-app
 
             # Create environment file for production
-            cat > .env.azure << EOF
+            cat > .env.azure << 'EOF'
             DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
             DB_PASSWORD=${{ secrets.DB_PASSWORD }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
@@ -113,6 +113,15 @@ jobs:
             VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}
             VITE_FIREBASE_MEASUREMENT_ID=${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
             EOF
+
+            # Create Firebase JSON as environment variable (compact, single line)
+            echo "FIREBASE_JSON='${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}'" >> .env.azure
+
+            # Verify environment file was created correctly
+            echo "=== Environment file created ==="
+            echo "Environment file size: $(wc -l < .env.azure) lines"
+            echo "Firebase JSON configured: $(grep -c FIREBASE_JSON .env.azure || echo 0)"
+            echo "Firebase enabled: $(grep FIREBASE_ENABLED .env.azure || echo 'NOT FOUND')"
 
             # Download the latest docker-compose.azure.yml from the repository
             echo "Downloading latest docker-compose.azure.yml..."
@@ -177,6 +186,9 @@ jobs:
             echo "=== Testing Connectivity ==="
             echo "Testing backend health endpoint..."
             curl -f http://localhost:8085/actuator/health || echo "Backend health check failed"
+
+            echo "Testing backend Firebase status..."
+            curl -f http://localhost:8085/api/auth/google-patient 2>/dev/null | head -100 || echo "Firebase test failed (expected for configuration check)"
 
             echo "Testing frontend..."
             curl -f http://localhost:8080/ || echo "Frontend connectivity failed"

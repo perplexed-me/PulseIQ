@@ -49,19 +49,30 @@
 # -------------
 
 ###############################################################################
-# Stage 1 – Build the jar with Maven
+# Stage 1 – Build the jar with Maven (Optimized for Docker layer caching)
 ###############################################################################
 FROM maven:3.9.7-eclipse-temurin-21 AS build
+
+# Set Maven options for better performance and stability
+ENV MAVEN_OPTS="-Xmx1024m -XX:MaxMetaspaceSize=512m"
 
 WORKDIR /build
 
 # Copy Maven configuration first for better layer caching
+# Only rebuild dependencies if pom.xml changes
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
 
-# Copy source code and build
+# Download dependencies with timeout and better error handling
+RUN mvn dependency:resolve -B -q --fail-at-end
+
+# Copy source code (Firebase service account file is already included in src/main/resources/)
 COPY src ./src
-RUN mvn -B clean package -DskipTests
+
+# Build with explicit memory settings and timeout
+RUN mvn -B clean package -DskipTests \
+  -Dmaven.wagon.http.retryHandler.count=3 \
+  -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 \
+  -Dorg.slf4j.simplelogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
 
 ###############################################################################
 # Stage 2 – Runtime image with security best practices

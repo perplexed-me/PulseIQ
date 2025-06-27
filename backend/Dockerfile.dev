@@ -1,0 +1,30 @@
+# Development Dockerfile - Optimized for fast builds
+FROM eclipse-temurin:21-jdk-jammy
+
+# Install Maven
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://archive.apache.org/dist/maven/maven-3/3.9.7/binaries/apache-maven-3.9.7-bin.tar.gz | tar xzf - -C /opt && \
+    ln -s /opt/apache-maven-3.9.7 /opt/maven && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV MAVEN_HOME=/opt/maven
+ENV PATH="$MAVEN_HOME/bin:$PATH"
+
+WORKDIR /app
+
+# Copy Maven configuration first - this layer will be cached unless pom.xml changes
+COPY pom.xml .
+
+# Download dependencies only if pom.xml has changed
+# This is the expensive operation that we want to cache
+RUN mvn dependency:go-offline -B || true
+
+# Copy source code
+COPY src ./src
+
+# For development, we'll use spring-boot:run which is faster than packaging
+# But we'll keep the package option for production builds
+CMD ["mvn", "spring-boot:run", "-Dspring-boot.run.jvmArguments=-Dspring.profiles.active=dev"]
+
+EXPOSE 8085
