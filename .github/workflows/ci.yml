@@ -2,9 +2,9 @@ name: CI Build & Test
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
   test-backend:
@@ -13,7 +13,7 @@ jobs:
     # Add PostgreSQL service for testing
     services:
       postgres:
-        image: postgres:15
+        image: postgres:14
         env:
           POSTGRES_DB: pulseiq_db_test
           POSTGRES_USER: test_user
