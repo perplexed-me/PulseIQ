@@ -1,0 +1,22 @@
+# Ignore build output
+target/
+!target/*.jar
+
+# Ignore IntelliJ IDEA or Eclipse files
+*.iml
+.idea/
+*.classpath
+*.project
+*.settings/
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+
+# Ignore Git files
+.git
+.gitignore
+
+# OS generated files
+.DS_Store
+Thumbs.db
