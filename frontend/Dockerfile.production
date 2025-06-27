@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Copy package files for dependency installation
 COPY package*.json ./
-COPY bun.lockb ./
 
 # Install dependencies (production only for smaller image)
 RUN npm ci --only=production
