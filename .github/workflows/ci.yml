@@ -9,7 +9,7 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
-    
+
     # Add PostgreSQL service for testing
     services:
       postgres:
@@ -25,14 +25,14 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-    
+
     env:
       # Use local test database instead of external
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pulseiq_db_test?currentSchema=pulseiq
       SPRING_DATASOURCE_USERNAME: test_user
       SPRING_DATASOURCE_PASSWORD: test_password
       JWT_SECRET: test_jwt_secret_for_ci_only
-    
+
     defaults:
       run:
         working-directory: backend

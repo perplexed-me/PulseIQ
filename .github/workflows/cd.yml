@@ -98,104 +98,28 @@ jobs:
             FIREBASE_ENABLED=true
             EOF
 
-            # Create docker-compose.azure.yml
-            cat > docker-compose.azure.yml << 'EOF'
-            version: '3.8'
+            # Download the latest docker-compose.azure.yml from the repository
+            echo "Downloading latest docker-compose.azure.yml..."
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -o docker-compose.azure.yml \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/docker-compose.azure.yml?ref=main"
 
-            services:
-              db:
-                image: postgres:15-alpine
-                container_name: pulseiq_postgres
-                environment:
-                  POSTGRES_DB: pulseiq_db
-                  POSTGRES_USER: pulseiq_user
-                  POSTGRES_PASSWORD: ${DB_PASSWORD}
-                  POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
-                ports:
-                  - "5432:5432"
-                volumes:
-                  - postgres_data:/var/lib/postgresql/data
-                  - ./init-schema.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
-                networks:
-                  - pulseiq-network
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U pulseiq_user -d pulseiq_db"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 5
-                  start_period: 30s
-                restart: unless-stopped
-
-              backend:
-                image: ${{ secrets.DOCKER_USERNAME }}/pulseiq-backend:latest
-                container_name: pulseiq_backend
-                depends_on:
-                  db:
-                    condition: service_healthy
-                ports:
-                  - "8085:8085"
-                networks:
-                  - pulseiq-network
-                environment:
-                  - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/pulseiq_db?currentSchema=pulseiq
-                  - SPRING_DATASOURCE_USERNAME=pulseiq_user
-                  - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
-                  - JWT_SECRET=${JWT_SECRET}
-                  - FIREBASE_ENABLED=true
-                  - APP_CORS_ALLOWED_ORIGINS=${FRONTEND_URL},http://localhost:8080
-                volumes:
-                  - ./firebase-service-account.json:/app/firebase-service-account.json:ro
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost:8085/actuator/health"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-                  start_period: 60s
-                restart: unless-stopped
-
-              frontend:
-                image: ${{ secrets.DOCKER_USERNAME }}/pulseiq-frontend:latest
-                container_name: pulseiq_frontend
-                depends_on:
-                  backend:
-                    condition: service_healthy
-                ports:
-                  - "8080:80"
-                networks:
-                  - pulseiq-network
-                environment:
-                  - VITE_BACKEND_URL=${BACKEND_URL}
-                healthcheck:
-                  test: ["CMD", "curl", "-f", "http://localhost/"]
-                  interval: 30s
-                  timeout: 10s
-                  retries: 3
-                restart: unless-stopped
-
-            volumes:
-              postgres_data:
-                driver: local
-
-            networks:
-              pulseiq-network:
-                driver: bridge
-            EOF
-
-            # Create database initialization script
-            cat > init-schema.sql << 'EOF'
-            -- PulseIQ Database Initialization Script
-            CREATE SCHEMA IF NOT EXISTS pulseiq;
-            ALTER DATABASE pulseiq_db SET search_path TO pulseiq;
-            GRANT USAGE ON SCHEMA pulseiq TO pulseiq_user;
-            GRANT CREATE ON SCHEMA pulseiq TO pulseiq_user;
-            GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA pulseiq TO pulseiq_user;
-            GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA pulseiq TO pulseiq_user;
-            ALTER DEFAULT PRIVILEGES IN SCHEMA pulseiq GRANT ALL ON TABLES TO pulseiq_user;
-            ALTER DEFAULT PRIVILEGES IN SCHEMA pulseiq GRANT ALL ON SEQUENCES TO pulseiq_user;
-            EOF
+            # Download the latest init-schema.sql from the repository
+            echo "Downloading latest init-schema.sql..."
+            curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -o init-schema.sql \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/backend/init-schema.sql?ref=main"
 
             # Create Firebase service account file
             echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > firebase-service-account.json
+
+            # Ensure firewall allows HTTP traffic
+            echo "Configuring firewall for HTTP traffic..."
+            sudo ufw allow 8080/tcp || true
+            sudo ufw allow 8085/tcp || true
+            sudo ufw status || true
 
             # Pull latest images
             echo "Pulling latest images..."
@@ -231,7 +155,24 @@ jobs:
 
             # Show recent logs
             echo "=== Recent Logs ==="
-            docker-compose -f docker-compose.azure.yml logs --tail=10
+            docker-compose -f docker-compose.azure.yml logs --tail=20
+
+            # Test connectivity
+            echo "=== Testing Connectivity ==="
+            echo "Testing backend health endpoint..."
+            curl -f http://localhost:8085/actuator/health || echo "Backend health check failed"
+            
+            echo "Testing frontend..."
+            curl -f http://localhost:8080/ || echo "Frontend connectivity failed"
+            
+            echo "Testing external connectivity..."
+            curl -f http://127.0.0.1:8080/ || echo "External frontend test failed"
+
+            # Show network and port information
+            echo "=== Network Information ==="
+            netstat -tlnp | grep -E ':(8080|8085)' || echo "Ports not listening"
+            docker network ls
+            docker inspect pulseiq_frontend | grep -A 5 NetworkSettings || true
 
             echo "✅ Deployment completed successfully!"
             echo "Frontend: http://${{ secrets.AZURE_SSH_HOST }}:8080"
