@@ -156,10 +156,11 @@ const Register = () => {
         });
       }
       navigate('/login');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Something went wrong. Please try again.";
       toast({
         title: "Registration Failed",
-        description: error.message || "Something went wrong. Please try again.",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {

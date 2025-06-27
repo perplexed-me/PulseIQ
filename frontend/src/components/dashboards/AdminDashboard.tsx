@@ -177,11 +177,12 @@ const AdminDashboard = () => {
           : 'User has been rejected successfully.',
         variant: action === 'approve' ? 'default' : 'destructive'
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Error ${action}ing user:`, err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       toast({
         title: 'Action Failed',
-        description: err.message || 'Unknown error occurred',
+        description: errorMessage,
         variant: 'destructive'
       });
     }

@@ -284,11 +284,12 @@ const Login = () => {
         navigate('/patient/dashboard');
       }, 10);
     
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Sign-in error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Google Sign-In Failed',
-        description: err.message,
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {

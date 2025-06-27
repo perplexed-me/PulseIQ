@@ -142,7 +142,27 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.8</version>
+                <version>0.8.10</version>
+                <configuration>
+                    <excludes>
+                        <!-- Exclude JDK internal classes -->
+                        <exclude>java/**</exclude>
+                        <exclude>javax/**</exclude>
+                        <exclude>sun/**</exclude>
+                        <exclude>jdk/**</exclude>
+                        <!-- Exclude Spring Boot auto-configuration -->
+                        <exclude>**/AutoConfiguration*</exclude>
+                        <!-- Exclude Hibernate proxies and DTOs -->
+                        <exclude>**/*DTO*</exclude>
+                        <exclude>**/*Entity*</exclude>
+                        <exclude>**/*Proxy*</exclude>
+                        <!-- Exclude configuration classes -->
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/Config*</exclude>
+                        <!-- Exclude main application class -->
+                        <exclude>**/PulseiqApplication*</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
