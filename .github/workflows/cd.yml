@@ -66,6 +66,15 @@ jobs:
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VITE_BACKEND_URL=http://${{ secrets.AZURE_SSH_HOST }}:8085
+            VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}
+            VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+            VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+            VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+            VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+            VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}
+            VITE_FIREBASE_MEASUREMENT_ID=${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
 
   deploy-to-azure:
     needs: build-and-push
@@ -96,6 +105,13 @@ jobs:
             FRONTEND_URL=http://${{ secrets.AZURE_SSH_HOST }}:8080
             BACKEND_URL=http://${{ secrets.AZURE_SSH_HOST }}:8085
             FIREBASE_ENABLED=true
+            VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}
+            VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+            VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+            VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+            VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+            VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}
+            VITE_FIREBASE_MEASUREMENT_ID=${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
             EOF
 
             # Download the latest docker-compose.azure.yml from the repository
@@ -161,10 +177,10 @@ jobs:
             echo "=== Testing Connectivity ==="
             echo "Testing backend health endpoint..."
             curl -f http://localhost:8085/actuator/health || echo "Backend health check failed"
-            
+
             echo "Testing frontend..."
             curl -f http://localhost:8080/ || echo "Frontend connectivity failed"
-            
+
             echo "Testing external connectivity..."
             curl -f http://127.0.0.1:8080/ || echo "External frontend test failed"
 

@@ -211,6 +211,17 @@ const Login = () => {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     try {
+      // Check if Firebase is properly configured
+      if (!auth || !googleProvider) {
+        toast({
+          title: 'Google Sign-In Unavailable',
+          description: 'Firebase authentication is not properly configured. Please use email/password login or contact support.',
+          variant: 'destructive'
+        });
+        setIsGoogleLoading(false);
+        return;
+      }
+
       const result = await signInWithPopup(auth, googleProvider);
       const idToken = await result.user.getIdToken();
 
