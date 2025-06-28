@@ -90,7 +90,7 @@ jobs:
           host: ${{ secrets.AZURE_SSH_HOST }}
           username: ${{ secrets.AZURE_SSH_USER }}
           key: ${{ secrets.AZURE_SSH_PRIVATE_KEY }}
-          source: "docker-compose.azure.yml,backend/init-schema.sql"
+          source: "docker-compose.yml,backend/init-schema.sql"
           target: "~/pulseiq-app/"
           strip_components: 0
 
@@ -133,10 +133,10 @@ jobs:
             # Validate Firebase JSON file
             echo "=== Validating Firebase Configuration ==="
             if python3 -m json.tool firebase-service-account.json > /dev/null 2>&1; then
-              echo "✅ Firebase service account JSON is valid"
+              echo "Firebase service account JSON is valid"
               echo "Project ID: $(python3 -c "import json; print(json.load(open('firebase-service-account.json'))['project_id'])" 2>/dev/null || echo 'Not found')"
             else
-              echo "❌ Firebase service account JSON is invalid"
+              echo "Firebase service account JSON is invalid"
               echo "File size: $(wc -c < firebase-service-account.json) bytes"
               echo "First 100 characters:"
               head -c 100 firebase-service-account.json
@@ -146,9 +146,9 @@ jobs:
             # Move init-schema.sql to the correct location
             if [ -f "backend/init-schema.sql" ]; then
               mv backend/init-schema.sql ./init-schema.sql
-              echo "✅ Database schema file prepared"
+              echo "Database schema file prepared"
             else
-              echo "❌ Database schema file not found"
+              echo "Database schema file not found"
               exit 1
             fi
 
@@ -165,11 +165,11 @@ jobs:
 
             # Pull latest images
             echo "=== Pulling Latest Images ==="
-            docker-compose -f docker-compose.azure.yml --env-file .env.azure pull
+            docker-compose -f docker-compose.yml --env-file .env.azure pull
 
             # Stop existing containers gracefully
             echo "=== Stopping Existing Containers ==="
-            docker-compose -f docker-compose.azure.yml down --remove-orphans || true
+            docker-compose -f docker-compose.yml down --remove-orphans || true
 
             # Clean up unused resources
             echo "=== Cleaning Up Docker Resources ==="
@@ -177,70 +177,70 @@ jobs:
 
             # Start the application
             echo "=== Starting PulseIQ Application ==="
-            docker-compose -f docker-compose.azure.yml --env-file .env.azure up -d
+            docker-compose -f docker-compose.yml --env-file .env.azure up -d
 
             # Wait for services to be healthy with better error handling
             echo "=== Waiting for Services to Start ==="
             timeout 300 bash -c '
               while true; do
                 # Check if all services are running
-                running_services=$(docker-compose -f docker-compose.azure.yml ps --services --filter "status=running" | wc -l)
-                total_services=$(docker-compose -f docker-compose.azure.yml ps --services | wc -l)
+                running_services=$(docker-compose -f docker-compose.yml ps --services --filter "status=running" | wc -l)
+                total_services=$(docker-compose -f docker-compose.yml ps --services | wc -l)
                 
                 echo "Services running: $running_services/$total_services"
                 
                 # Check if backend is healthy
                 if curl -f http://localhost:8085/actuator/health >/dev/null 2>&1; then
-                  echo "✅ Backend is healthy!"
+                  echo "Backend is healthy!"
                   break
                 fi
                 
                 echo "Waiting for services to start..."
-                docker-compose -f docker-compose.azure.yml logs --tail=5 backend
+                docker-compose -f docker-compose.yml logs --tail=5 backend
                 sleep 15
               done
             '
 
             # Show service status
             echo "=== Service Status ==="
-            docker-compose -f docker-compose.azure.yml ps
+            docker-compose -f docker-compose.yml ps
 
             # Show recent logs for debugging
             echo "=== Recent Application Logs ==="
             echo "Backend logs:"
-            docker-compose -f docker-compose.azure.yml logs --tail=30 backend
+            docker-compose -f docker-compose.yml logs --tail=30 backend
 
             echo "Frontend logs:"
-            docker-compose -f docker-compose.azure.yml logs --tail=10 frontend
+            docker-compose -f docker-compose.yml logs --tail=10 frontend
 
             echo "Database logs:"
-            docker-compose -f docker-compose.azure.yml logs --tail=10 db
+            docker-compose -f docker-compose.yml logs --tail=10 db
 
             # Test connectivity with detailed output
             echo "=== Testing Application Connectivity ==="
 
             echo "Testing backend health endpoint..."
             if curl -f -s http://localhost:8085/actuator/health; then
-              echo "✅ Backend health check passed"
+              echo "Backend health check passed"
             else
-              echo "❌ Backend health check failed"
-              docker-compose -f docker-compose.azure.yml logs --tail=20 backend
+              echo "Backend health check failed"
+              docker-compose -f docker-compose.yml logs --tail=20 backend
             fi
 
             echo "Testing backend Firebase configuration..."
             backend_response=$(curl -s -w "%{http_code}" -o /dev/null http://localhost:8085/api/auth/google-patient 2>/dev/null || echo "000")
             if [ "$backend_response" != "000" ]; then
-              echo "✅ Backend Firebase endpoint responding (status: $backend_response)"
+              echo "Backend Firebase endpoint responding (status: $backend_response)"
             else
-              echo "❌ Backend Firebase endpoint not responding"
+              echo "Backend Firebase endpoint not responding"
             fi
 
             echo "Testing frontend..."
             if curl -f -s http://localhost:8080/ >/dev/null; then
-              echo "✅ Frontend is accessible"
+              echo "Frontend is accessible"
             else
-              echo "❌ Frontend is not accessible"
-              docker-compose -f docker-compose.azure.yml logs --tail=10 frontend
+              echo "Frontend is not accessible"
+              docker-compose -f docker-compose.yml logs --tail=10 frontend
             fi
 
             # Show network and port information
@@ -265,7 +265,7 @@ jobs:
               echo "Firebase service account file not found"
             fi
 
-            echo "✅ Deployment completed successfully!"
-            echo "🌐 Frontend: http://${{ secrets.AZURE_SSH_HOST }}:8080"
-            echo "🔧 Backend: http://${{ secrets.AZURE_SSH_HOST }}:8085"
-            echo "📊 Health Check: http://${{ secrets.AZURE_SSH_HOST }}:8085/actuator/health"
+            echo "Deployment completed successfully!"
+            echo "Frontend: http://${{ secrets.AZURE_SSH_HOST }}:8080"
+            echo "Backend: http://${{ secrets.AZURE_SSH_HOST }}:8085"
+            echo "Health Check: http://${{ secrets.AZURE_SSH_HOST }}:8085/actuator/health"
